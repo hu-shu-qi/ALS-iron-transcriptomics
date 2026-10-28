@@ -1,0 +1,3 @@
+ a<-rd('Supplement_microglia_three_algorithms');a[,panel:=factor(panel,levels=rev(key$panel[key$panel%in%a$panel]))];a[,method:=factor(method,levels=c('UCell','AUCell','singscore'))]
+ p<-ggplot(a,aes(effect,panel))+geom_vline(xintercept=0,linetype=2,linewidth=.3,colour='#9A9A9A')+geom_segment(aes(x=CI_low,xend=CI_high,yend=panel),linewidth=.5,colour='#4178A4')+geom_point(size=1.8,colour='#4178A4')+facet_wrap(~method,nrow=1,scales='free_x')+scale_y_discrete(labels=setlabs)+labs(x='ALS - Control score effect (95% CI)',y=NULL)+theme(strip.text=element_text(face='bold'))
+ savefig(p,'FigureS1_microglia_three_algorithms',80)

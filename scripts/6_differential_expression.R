@@ -1,0 +1,40 @@
+a<-commandArgs(trailingOnly=TRUE)
+if(length(a)!=3)stop('Usage: Rscript 6_differential_expression.R BULK_RDS SN_PSEUDOBULK_RDS NEW_OUTPUT_DIR')
+suppressPackageStartupMessages({library(limma);library(edgeR);library(data.table)})
+if(file.exists(a[3]))stop('Output exists; choose a new directory')
+stopifnot(file.exists(a[1]),file.exists(a[2]))
+dir.create(a[3],recursive=TRUE);out<-normalizePath(a[3])
+script<-gsub('~+~',' ',sub('^--file=','',grep('^--file=',commandArgs(),value=TRUE)[1]),fixed=TRUE)
+pkg<-dirname(dirname(normalizePath(script)))
+gmt<-file.path(pkg,'resources/iron_gene_sets.gmt')
+sets<-lapply(strsplit(readLines(gmt),'\t'),function(x)x[-c(1,2)])
+genes<-unique(unlist(sets))
+wr<-function(x,n)fwrite(x,file.path(out,paste0(n,'.csv')))
+b<-readRDS(a[1]);md<-as.data.table(b$metadata)
+md[,group:=factor(group,levels=c('Control','ALS'))];md[,sex:=factor(sex)]
+stopifnot(!anyDuplicated(md$donor_id),ncol(b$expression)==nrow(md))
+d<-model.matrix(~sex+group,md);stopifnot(qr(d)$rank==ncol(d))
+f<-eBayes(lmFit(b$expression,d),trend=TRUE,robust=TRUE);j<-match('groupALS',colnames(d))
+se<-f$stdev.unscaled[,j]*sqrt(f$s2.post);ci<-qt(.975,f$df.total)*se
+de<-data.table(gene=rownames(b$expression),logFC=f$coefficients[,j],SE=se,CI_low=f$coefficients[,j]-ci,CI_high=f$coefficients[,j]+ci,P=f$p.value[,j],FDR=p.adjust(f$p.value[,j],'BH'))
+de[,iron:=gene%in%genes];wr(de,'bulk_DE_all')
+cand<-de[iron & FDR<.05 & abs(logFC)>=.585];cand[,bulk_direction:=sign(logFC)];wr(cand,'bulk_candidates')
+s<-readRDS(a[2]);pm<-as.data.table(s$metadata)
+cts<-pm[eligible_profile==TRUE,.(ok=sum(group=='Control')>=3&sum(group=='ALS')>=3),by=cell_type][ok==TRUE,as.character(cell_type)]
+all<-list()
+for(ct in cts){
+ m<-copy(pm[as.character(cell_type)==ct & eligible_profile==TRUE]);m[,group:=factor(group,levels=c('Control','ALS'))]
+ stopifnot(!anyDuplicated(m$donor_id),all(m$profile_id%in%colnames(s$counts)))
+ d<-model.matrix(~sex+group,m);stopifnot(qr(d)$rank==ncol(d),nrow(d)>ncol(d))
+ y<-DGEList(s$counts[,m$profile_id]);keep<-filterByExpr(y,design=d);y<-calcNormFactors(y[keep,,keep.lib.sizes=FALSE]);y<-estimateDisp(y,d,robust=TRUE)
+ q<-glmQLFTest(glmQLFit(y,d,robust=TRUE),coef='groupALS')
+ t<-as.data.table(topTags(q,n=Inf,sort.by='none')$table,keep.rownames='gene');setnames(t,'PValue','P');t[,cell_type:=ct];all[[ct]]<-t
+ message('Completed ',ct)
+}
+sn<-rbindlist(all);sn[,FDR_global:=p.adjust(P,'BH')];wr(sn,'sn_DE_all')
+joint<-merge(CJ(gene=cand$gene,cell_type=cts),sn,by=c('gene','cell_type'),all.x=TRUE)
+joint<-merge(joint,cand[,.(gene,bulk_direction)],by='gene')
+joint[,supported:=is.finite(FDR)&FDR<.05&abs(logFC)>=.25&sign(logFC)==bulk_direction];wr(joint,'sn_candidate_support')
+wr(data.table(input=normalizePath(c(a[1:2],gmt)),md5=unname(tools::md5sum(c(a[1:2],gmt)))),'input_manifest')
+wr(data.table(metric=c('bulk_candidates','sn_pairs','sn_genes'),value=c(nrow(cand),sum(joint$supported),uniqueN(joint[supported==TRUE,gene]))),'summary')
+writeLines(capture.output(sessionInfo()),file.path(out,'sessionInfo.txt'))

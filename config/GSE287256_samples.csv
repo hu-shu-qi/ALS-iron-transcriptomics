@@ -1,0 +1,13 @@
+sample_id,donor_id,bulk_GSM,snRNA_GSM,expression_sample_id,group,sex,age,tissue
+29_control,13085,GSM8742351,GSM8742363,165_S165,Control,Male,57,cervical spinal cord
+32_control,13122,GSM8742352,GSM8742364,166_S166,Control,Female,68,cervical spinal cord
+35_control,13394,GSM8742353,GSM8742365,167_S167,Control,Female,65,cervical spinal cord
+37_control,13446,GSM8742354,GSM8742366,168_S168,Control,Female,59,cervical spinal cord
+39_ALS,5724,GSM8742355,GSM8742367,169_S169,ALS,Male,65,cervical spinal cord
+40_ALS,5781,GSM8742356,GSM8742368,170_S170,ALS,Female,61,cervical spinal cord
+41_ALS,5867,GSM8742357,GSM8742369,171_S171,ALS,Male,51,cervical spinal cord
+42_ALS,5951,GSM8742358,GSM8742370,172_S172,ALS,Female,54,cervical spinal cord
+44_ALS,5974,GSM8742359,GSM8742371,173_S173,ALS,Male,56,cervical spinal cord
+45_ALS,6290,GSM8742360,GSM8742372,174_S174,ALS,Male,61,cervical spinal cord
+46_ALS,6314,GSM8742361,GSM8742373,175_S175,ALS,Female,68,cervical spinal cord
+47_ALS,6350,GSM8742362,GSM8742374,176_S176,ALS,Male,60,cervical spinal cord

@@ -1,0 +1,47 @@
+a<-commandArgs(trailingOnly=TRUE)
+if(length(a)!=3)stop('Usage: Rscript 5_aggregate_spatial.R INPUT_DIRECTORY SAMPLE_CONFIG_CSV NEW_OUTPUT_DIR')
+if(file.exists(a[3]))stop('Output exists')
+suppressPackageStartupMessages({library(Seurat);library(Matrix);library(data.table)})
+cfg<-fread(a[2],na.strings=c('','NA'))
+stopifnot(!anyDuplicated(cfg$file),!anyDuplicated(cfg$donor_id))
+files<-sort(list.files(a[1],pattern='rds.gz$',full.names=TRUE))
+stopifnot(length(files)>0,setequal(basename(files),cfg$file))
+dir.create(a[3],recursive=TRUE)
+pbs<-list();qcs<-list();regions<-list();sources<-list()
+for(f in files){
+ message('Aggregating ',basename(f))
+ con<-gzcon(gzfile(f,'rb'));o<-tryCatch(readRDS(con),finally=close(con))
+ lay<-grep('^counts($|\\.)',Layers(o[['Spatial']]),value=TRUE)
+ stopifnot(length(lay)>0)
+ xx<-lapply(lay,function(l)LayerData(o,assay='Spatial',layer=l))
+ stopifnot(all(vapply(xx,function(z)identical(rownames(z),rownames(xx[[1]])),TRUE)))
+ x<-do.call(cbind,xx);md<-as.data.table(o@meta.data,keep.rownames='spot_id')
+ stopifnot(!anyDuplicated(colnames(x)),setequal(md$spot_id,colnames(x)))
+ x<-x[,md$spot_id,drop=FALSE]
+ stopifnot(!anyDuplicated(rownames(x)),all(is.finite(x@x)),all(x@x>=0),all(x@x==round(x@x)))
+ field<-if('manual_3'%in%names(md))'manual_3' else 'manual'
+ stopifnot(field%in%names(md))
+ reg<-as.character(md[[field]]);reg[is.na(reg)|reg=='']<-'Unlabelled'
+ pb<-vapply(sort(unique(reg)),function(r)Matrix::rowSums(x[,reg==r,drop=FALSE]),numeric(nrow(x)))
+ rownames(pb)<-rownames(x);pbs[[basename(f)]]<-pb
+ co<-do.call(rbind,lapply(names(o@images),function(im)GetTissueCoordinates(o[[im]])))
+ stopifnot(setequal(rownames(co),colnames(x)),all(is.finite(as.matrix(co))))
+ cond<-unique(as.character(md$condition));stopifnot(length(cond)==1)
+ nf<-Matrix::colSums(x>0);nc<-Matrix::colSums(x)
+ qcs[[basename(f)]]<-data.table(file=basename(f),condition=cond,section=unique(as.character(md$sample))[1],genes=nrow(x),spots=ncol(x),median_features=median(nf),median_UMI=median(nc),pct_below1500=mean(nf<1500)*100,pct_below_auc5=mean(nf<ceiling(.05*nrow(x)))*100,zero_library=sum(nc==0),coordinate_rows=nrow(co),counts_match_metadata=max(abs(nc-md$nCount_Spatial)),image_count=length(o@images))
+ regions[[basename(f)]]<-data.table(region=reg)[,.(spots=.N),by=region][,file:=basename(f)]
+ sources[[basename(f)]]<-data.table(file=basename(f),label_field=field)
+ rm(o,x,xx,md);gc(verbose=FALSE)
+}
+q<-rbindlist(qcs);mapped<-merge(q,cfg,by='file')
+mapped[,condition_matches_config:=ifelse(condition=='C9orf72','C9_ALS',condition)==group]
+stopifnot(all(mapped$condition_matches_config))
+saveRDS(pbs,file.path(a[3],'spatial_pseudobulk.rds'))
+fwrite(mapped,file.path(a[3],'sample_manifest.csv'))
+fwrite(rbindlist(regions),file.path(a[3],'region_spot_counts.csv'))
+fwrite(rbindlist(sources),file.path(a[3],'region_label_sources.csv'))
+script<-gsub('~+~',' ',sub('^--file=','',grep('^--file=',commandArgs(),value=TRUE)[1]),fixed=TRUE)
+inputs<-normalizePath(c(files,a[2],script))
+fwrite(data.table(path=inputs,md5=unname(tools::md5sum(inputs))),file.path(a[3],'input_manifest.csv'))
+writeLines(capture.output(sessionInfo()),file.path(a[3],'sessionInfo.txt'))
+message('COMPLETE: ',length(pbs),' spatial objects')

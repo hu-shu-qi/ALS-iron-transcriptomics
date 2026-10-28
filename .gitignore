@@ -1,0 +1,13 @@
+raw_inputs/
+private_inputs/
+results/
+renv/library/
+renv/staging/
+.Rhistory
+.RData
+.DS_Store
+~$*
+ALS_Clinical_Data.xlsx
+*.rds
+*.h5
+*.h5ad

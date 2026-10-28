@@ -1,0 +1,21 @@
+a<-commandArgs(trailingOnly=TRUE)
+if(!length(a)%in%c(1L,2L))stop('Usage: Rscript 16_render_figures.R NEW_OUTPUT_DIR [SOURCE_ROOT]')
+stopifnot(!file.exists(a[1]))
+script<-gsub('~+~',' ',sub('^--file=','',grep('^--file=',commandArgs(),value=TRUE)[1]),fixed=TRUE)
+pkg<-dirname(dirname(normalizePath(script)))
+source_root<-if(length(a)==2L)normalizePath(a[2]) else file.path(pkg,'source_data')
+dir.create(a[1],recursive=TRUE);plots<-normalizePath(a[1])
+for(module in c('figure2.R','figure3.R','figure4.R','figure5.R','figure6.R','supplementary_figures.R','figureS1.R')){
+  message('Rendering ',module)
+  env<-new.env(parent=globalenv())
+  env$src<-source_root;env$source_root<-source_root;env$pkg<-pkg;env$plots<-plots
+  source(file.path(pkg,'scripts/lib/plot_style.R'),local=env)
+  source(file.path(pkg,'scripts/lib',module),local=env)
+}
+lodo_out<-file.path(plots,'spatial_LODO')
+status<-system2(file.path(R.home('bin'),'Rscript'),shQuote(c(file.path(pkg,'scripts/17_render_spatial_lodo.R'),file.path(source_root,'spatial_LODO'),lodo_out)))
+stopifnot(status==0L)
+files<-list.files(lodo_out,pattern='^FigureS3_LODO\\.(pdf|svg|png|tiff)$',full.names=TRUE)
+stopifnot(length(files)==4L,all(file.copy(files,plots)))
+writeLines(capture.output(sessionInfo()),file.path(plots,'sessionInfo.txt'))
+message('Exported Figures 2–6 and S1–S5.')
